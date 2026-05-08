@@ -140,6 +140,26 @@ def set_document_defaults(doc):
         section.right_margin = Cm(3.18)
 
 
+def verify_citation_order(chapter_text):
+    """验证引用是否按先后顺序排列（1, 2, 3, ..., N）。"""
+    import re
+    markers = re.findall(r'\[(\d+(?:[,\-\s]*\d+)*)\]', chapter_text)
+    seq = []
+    for m in markers:
+        for part in re.split(r'[,\s]+', m.strip()):
+            if '-' in part:
+                a, b = map(int, part.split('-'))
+                seq.extend(range(a, b + 1))
+            elif part:
+                seq.append(int(part))
+    seen, first = set(), []
+    for n in seq:
+        if n not in seen:
+            seen.add(n); first.append(n)
+    ok = all(first[i] == i + 1 for i in range(len(first)))
+    return ok, first, len(seq)
+
+
 def build_doc():
     doc = Document()
     set_document_defaults(doc)
@@ -583,7 +603,28 @@ def build_doc():
     doc.save(output_path)
     print(f"Word文档已生成：{output_path}")
 
-    # 统计
+    # === 引用顺序自动验证（从生成的文档中读取，最可靠）===
+    from docx import Document as _D
+    _doc = _D(output_path)
+    ch1_text = ""
+    in_ch1 = False
+    for _p in _doc.paragraphs:
+        import re as _re
+        if _re.match(r'^1\s+研究意义', _p.text):
+            in_ch1 = True
+        elif _re.match(r'^2\s+研究目标', _p.text):
+            in_ch1 = False
+        if in_ch1:
+            ch1_text += _p.text + "\n"
+    ok, first, total = verify_citation_order(ch1_text)
+    print(f"第1章引用标记出现 {total} 次，共使用 {len(first)} 条文献")
+    print(f"首次出现顺序: {first}")
+    if ok:
+        print("✓ 参考文献已严格按引用先后顺序（1→N）排列")
+    else:
+        print("✗ 参考文献未按引用顺序排列，需要重排")
+
+    # 近五年文献统计
     recent = sum(1 for r in refs if any(y in r for y in ('2021', '2022', '2023', '2024', '2025')))
     print(f"共 {len(refs)} 条参考文献，近五年（2021—2025）{recent} 条，占比 {recent/len(refs)*100:.1f}%")
     return output_path
